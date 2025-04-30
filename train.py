@@ -28,6 +28,7 @@ import logging
 from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime
+from ip102_loader import load_datasets, get_dataloaders
 
 import torch
 import torch.nn as nn
@@ -35,9 +36,7 @@ import torchvision.utils
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
 from timm.data import (
-    create_dataset,
-    create_loader,
-    resolve_data_config,
+
     Mixup,
     FastCollateMixup,
     AugMixDataset,
@@ -868,6 +867,12 @@ def main():
                 "Metrics not being logged to wandb, try `pip install wandb`"
             )
 
+    args.input_size = (3, 224, 224)
+    args.mean = [0.485, 0.456, 0.406]
+    args.std = [0.229, 0.224, 0.225]
+    args.interpolation = 'bicubic'
+    args.crop_pct = 0.875
+
     args.prefetcher = not args.no_prefetcher
     args.distributed = False
     if "WORLD_SIZE" in os.environ:
@@ -937,9 +942,9 @@ def main():
             f"Model {safe_model_name(args.model)} created, param count:{sum([m.numel() for m in model.parameters()])}"
         )
 
-    data_config = resolve_data_config(
-        vars(args), model=model, verbose=args.local_rank == 0
-    )
+    # data_config = resolve_data_config(
+    #     vars(args), model=model, verbose=args.local_rank == 0
+    # )
 
     # setup augmentation batch splits for contrastive loss or split bn
     num_aug_splits = 0
@@ -1025,8 +1030,8 @@ def main():
                 log_info=args.local_rank == 0,
             )
 
-            data_config["crop_pct"] = 1.0
-            print("data config: {}".format(data_config))
+            # data_config["crop_pct"] = 1.0
+            # print("data config: {}".format(data_config))
 
     # setup exponential moving average of model weights, SWA could be used here too
     model_ema = None
@@ -1109,25 +1114,29 @@ def main():
         teacher_model.eval()
 
     # create the train and eval datasets
-    dataset_train = create_dataset(
-        args.dataset,
-        root=args.data_dir,
-        split=args.train_split,
-        is_training=True,
-        class_map=args.class_map,
-        download=args.dataset_download,
-        batch_size=args.batch_size,
-        repeats=args.epoch_repeats,
-    )
-    dataset_eval = create_dataset(
-        args.dataset,
-        root=args.data_dir,
-        split=args.val_split,
-        is_training=False,
-        class_map=args.class_map,
-        download=args.dataset_download,
-        batch_size=args.batch_size,
-    )
+    # dataset_train = create_dataset(
+    #     args.dataset,
+    #     root=args.data_dir,
+    #     split=args.train_split,
+    #     is_training=True,
+    #     class_map=args.class_map,
+    #     download=args.dataset_download,
+    #     batch_size=args.batch_size,
+    #     repeats=args.epoch_repeats,
+    # )
+    # dataset_eval = create_dataset(
+    #     args.dataset,
+    #     root=args.data_dir,
+    #     split=args.val_split,
+    #     is_training=False,
+    #     class_map=args.class_map,
+    #     download=args.dataset_download,
+    #     batch_size=args.batch_size,
+    # )
+
+    train_ds, val_ds, test_ds = load_datasets()
+    train_dl, val_dl, test_dl = get_dataloaders(train_ds, val_ds, test_ds)
+
 
     # setup mixup / cutmix
     collate_fn = None
@@ -1157,53 +1166,56 @@ def main():
         dataset_train = AugMixDataset(dataset_train, num_splits=num_aug_splits)
 
     # create data loaders w/ augmentation pipeiine
-    train_interpolation = args.train_interpolation
-    if args.no_aug or not train_interpolation:
-        train_interpolation = data_config["interpolation"]
-    loader_train = create_loader(
-        dataset_train,
-        input_size=data_config["input_size"],
-        batch_size=args.batch_size,
-        is_training=True,
-        use_prefetcher=args.prefetcher,
-        no_aug=args.no_aug,
-        re_prob=args.reprob,
-        re_mode=args.remode,
-        re_count=args.recount,
-        re_split=args.resplit,
-        scale=args.scale,
-        ratio=args.ratio,
-        hflip=args.hflip,
-        vflip=args.vflip,
-        color_jitter=args.color_jitter,
-        auto_augment=args.aa,
-        num_aug_repeats=args.aug_repeats,
-        num_aug_splits=num_aug_splits,
-        interpolation=train_interpolation,
-        mean=data_config["mean"],
-        std=data_config["std"],
-        num_workers=args.workers,
-        distributed=args.distributed,
-        collate_fn=collate_fn,
-        pin_memory=args.pin_mem,
-        use_multi_epochs_loader=args.use_multi_epochs_loader,
-        worker_seeding=args.worker_seeding,
-    )
+    # train_interpolation = args.train_interpolation
+    # if args.no_aug or not train_interpolation:
+    #     train_interpolation = data_config["interpolation"]
+    # loader_train = create_loader(
+    #     dataset_train,
+    #     input_size=data_config["input_size"],
+    #     batch_size=args.batch_size,
+    #     is_training=True,
+    #     use_prefetcher=args.prefetcher,
+    #     no_aug=args.no_aug,
+    #     re_prob=args.reprob,
+    #     re_mode=args.remode,
+    #     re_count=args.recount,
+    #     re_split=args.resplit,
+    #     scale=args.scale,
+    #     ratio=args.ratio,
+    #     hflip=args.hflip,
+    #     vflip=args.vflip,
+    #     color_jitter=args.color_jitter,
+    #     auto_augment=args.aa,
+    #     num_aug_repeats=args.aug_repeats,
+    #     num_aug_splits=num_aug_splits,
+    #     interpolation=train_interpolation,
+    #     mean=data_config["mean"],
+    #     std=data_config["std"],
+    #     num_workers=args.workers,
+    #     distributed=args.distributed,
+    #     collate_fn=collate_fn,
+    #     pin_memory=args.pin_mem,
+    #     use_multi_epochs_loader=args.use_multi_epochs_loader,
+    #     worker_seeding=args.worker_seeding,
+    # )
 
-    loader_eval = create_loader(
-        dataset_eval,
-        input_size=data_config["input_size"],
-        batch_size=args.validation_batch_size or args.batch_size,
-        is_training=False,
-        use_prefetcher=args.prefetcher,
-        interpolation=data_config["interpolation"],
-        mean=data_config["mean"],
-        std=data_config["std"],
-        num_workers=args.workers,
-        distributed=args.distributed,
-        crop_pct=data_config["crop_pct"],
-        pin_memory=args.pin_mem,
-    )
+    # loader_eval = create_loader(
+    #     dataset_eval,
+    #     input_size=data_config["input_size"],
+    #     batch_size=args.validation_batch_size or args.batch_size,
+    #     is_training=False,
+    #     use_prefetcher=args.prefetcher,
+    #     interpolation=data_config["interpolation"],
+    #     mean=data_config["mean"],
+    #     std=data_config["std"],
+    #     num_workers=args.workers,
+    #     distributed=args.distributed,
+    #     crop_pct=data_config["crop_pct"],
+    #     pin_memory=args.pin_mem,
+    # )
+    loader_train = train_dl
+    loader_eval = val_dl
+
 
     # setup loss function
     if args.jsd_loss:
@@ -1252,7 +1264,7 @@ def main():
                 [
                     datetime.now().strftime("%Y%m%d-%H%M%S"),
                     safe_model_name(args.model),
-                    str(data_config["input_size"][-1]),
+                    "224",
                 ]
             )
         output_dir = get_outdir(
