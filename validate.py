@@ -478,6 +478,7 @@ def validate(args):
 def main():
     setup_default_logging()
     args = parser.parse_args()
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++";)
     print(args)
     model_cfgs = []
     model_names = []
